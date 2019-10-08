@@ -22,7 +22,7 @@ import android.widget.ImageButton;
 import android.widget.Toast;
 
 import com.ibm.cloud.sdk.core.http.ServiceCall;
-import com.ibm.cloud.sdk.core.service.security.IamOptions;
+import com.ibm.cloud.sdk.core.security.IamAuthenticator;
 import com.ibm.watson.developer_cloud.android.library.audio.MicrophoneHelper;
 import com.ibm.watson.developer_cloud.android.library.audio.MicrophoneInputStream;
 import com.ibm.watson.developer_cloud.android.library.audio.StreamPlayer;
@@ -69,22 +69,17 @@ public class MainActivity extends AppCompatActivity {
   private TextToSpeech textToSpeech;
 
   private void createServices() {
-    watsonAssistant = new Assistant("2018-11-08", new IamOptions.Builder()
-            .apiKey(mContext.getString(R.string.assistant_apikey))
-            .build());
-    watsonAssistant.setEndPoint(mContext.getString(R.string.assistant_url));
+    IamAuthenticator sttAuthenticator = new IamAuthenticator(mContext.getString(R.string.STT_apikey));
+    speechService = new SpeechToText(sttAuthenticator);
+    speechService.setServiceUrl((mContext.getString(R.string.STT_url)));
 
-    textToSpeech = new TextToSpeech();
-    textToSpeech.setIamCredentials(new IamOptions.Builder()
-            .apiKey(mContext.getString(R.string.TTS_apikey))
-            .build());
-    textToSpeech.setEndPoint(mContext.getString(R.string.TTS_url));
+    IamAuthenticator assistantAuthenticator = new IamAuthenticator(mContext.getString(R.string.assistant_apikey));
+    watsonAssistant = new Assistant("2019-02-28", assistantAuthenticator);
+    watsonAssistant.setServiceUrl(mContext.getString(R.string.assistant_url));
 
-    speechService = new SpeechToText();
-    speechService.setIamCredentials(new IamOptions.Builder()
-            .apiKey(mContext.getString(R.string.STT_apikey))
-            .build());
-    speechService.setEndPoint(mContext.getString(R.string.STT_url));
+    IamAuthenticator ttsAuthenticator = new IamAuthenticator(mContext.getString(R.string.TTS_apikey));
+    textToSpeech = new TextToSpeech(ttsAuthenticator);
+    textToSpeech.setServiceUrl(mContext.getString(R.string.TTS_url));
   }
 
   @Override
@@ -244,8 +239,8 @@ public class MainActivity extends AppCompatActivity {
           if (response != null &&
             response.getOutput() != null &&
             !response.getOutput().getGeneric().isEmpty() &&
-            "text".equals(response.getOutput().getGeneric().get(0).getResponseType())) {
-            outMessage.setMessage(response.getOutput().getGeneric().get(0).getText());
+            "text".equals(response.getOutput().getGeneric().get(0).responseType())) {
+            outMessage.setMessage(response.getOutput().getGeneric().get(0).text());
             outMessage.setId("2");
 
             messageArrayList.add(outMessage);
@@ -277,11 +272,13 @@ public class MainActivity extends AppCompatActivity {
   private class SayTask extends AsyncTask<String, Void, String> {
     @Override
     protected String doInBackground(String... params) {
-      streamPlayer.playStream(textToSpeech.synthesize(new SynthesizeOptions.Builder()
-        .text(params[0])
-        .voice(SynthesizeOptions.Voice.EN_US_LISAVOICE)
-        .accept(SynthesizeOptions.Accept.AUDIO_WAV)
-        .build()).execute().getResult());
+      SynthesizeOptions synthesizeOptions =
+              new SynthesizeOptions.Builder()
+                      .text(params[0])
+                      .accept("audio/wav")
+                      .voice(SynthesizeOptions.Voice.EN_US_MICHAELV3VOICE)
+                      .build();
+      streamPlayer.playStream(textToSpeech.synthesize(synthesizeOptions).execute().getResult());
       return "Did synthesize";
     }
   }
@@ -309,7 +306,7 @@ public class MainActivity extends AppCompatActivity {
         listening = false;
         Toast.makeText(MainActivity.this, "Stopped Listening....Click to Start", Toast.LENGTH_LONG).show();
       } catch (Exception e) {
-        e.printStackTrace();
+        showError(e);
       }
 
     }
@@ -358,6 +355,12 @@ public class MainActivity extends AppCompatActivity {
         String text = speechResults.getResults().get(0).getAlternatives().get(0).getTranscript();
         showMicText(text);
       }
+      showDebug(speechResults.toString());
+    }
+
+    @Override
+    public void onConnected() {
+      showDebug("call to onConnected");
     }
 
     @Override
@@ -368,7 +371,23 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onDisconnected() {
+      showDebug("call to onDisconnected");
+    }
+
+    @Override
+    public void onInactivityTimeout(RuntimeException runtimeException) {
+
+    }
+
+    @Override
+    public void onListening() {
+      showDebug("call to onListening");
       enableMicButton();
+    }
+
+    @Override
+    public void onTranscriptionComplete() {
+      showDebug("call to onTranscriptionComplete");
     }
 
   }
@@ -400,7 +419,14 @@ public class MainActivity extends AppCompatActivity {
       }
     });
   }
-
+  private void showDebug(final String message) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+      }
+    });
+  }
 
 }
 
