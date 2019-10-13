@@ -287,6 +287,7 @@ public class MainActivity extends AppCompatActivity {
   private void recordMessage() {
     if (listening != true) {
       capture = microphoneHelper.getInputStream(true);
+
       new Thread(new Runnable() {
         @Override
         public void run() {
@@ -302,6 +303,16 @@ public class MainActivity extends AppCompatActivity {
 
     } else {
       try {
+        new Thread(new Runnable() {
+          @Override
+          public void run() {
+            try {
+              streamPlayer.playStream(capture);
+            } catch (Exception e) {
+              showError(e);
+            }
+          }
+        }).start();
         microphoneHelper.closeInputStream();
         listening = false;
         Toast.makeText(MainActivity.this, "Stopped Listening....Click to Start", Toast.LENGTH_LONG).show();
