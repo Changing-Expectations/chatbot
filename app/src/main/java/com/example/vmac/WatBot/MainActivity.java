@@ -3,6 +3,7 @@ package com.example.vmac.WatBot;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
@@ -26,7 +27,6 @@ import com.ibm.cloud.sdk.core.security.IamAuthenticator;
 import com.ibm.watson.developer_cloud.android.library.audio.MicrophoneHelper;
 import com.ibm.watson.developer_cloud.android.library.audio.MicrophoneInputStream;
 import com.ibm.watson.developer_cloud.android.library.audio.StreamPlayer;
-import com.ibm.watson.developer_cloud.android.library.audio.utils.ContentType;
 import com.ibm.watson.assistant.v2.Assistant;
 import com.ibm.watson.assistant.v2.model.CreateSessionOptions;
 import com.ibm.watson.assistant.v2.model.MessageInput;
@@ -40,393 +40,439 @@ import com.ibm.watson.speech_to_text.v1.websocket.BaseRecognizeCallback;
 import com.ibm.watson.text_to_speech.v1.TextToSpeech;
 import com.ibm.watson.text_to_speech.v1.model.SynthesizeOptions;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
 
-  private RecyclerView recyclerView;
-  private ChatAdapter mAdapter;
-  private ArrayList messageArrayList;
-  private EditText inputMessage;
-  private ImageButton btnSend;
-  private ImageButton btnRecord;
-  StreamPlayer streamPlayer = new StreamPlayer();
-  private boolean initialRequest;
-  private boolean permissionToRecordAccepted = false;
-  private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
-  private static String TAG = "MainActivity";
-  private static final int RECORD_REQUEST_CODE = 101;
-  private boolean listening = false;
-  private MicrophoneInputStream capture;
-  private Context mContext;
-  private MicrophoneHelper microphoneHelper;
+    private RecyclerView recyclerView;
+    private ChatAdapter mAdapter;
+    private ArrayList messageArrayList;
+    private EditText inputMessage;
+    private ImageButton btnSend;
+    private ImageButton btnRecord;
+    StreamPlayer streamPlayer = new StreamPlayer();
+    private boolean initialRequest;
+    private boolean permissionToRecordAccepted = false;
+    private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
+    private static String TAG = "MainActivity";
+    private static final int RECORD_REQUEST_CODE = 101;
+    private boolean listening = false;
+    private MicrophoneInputStream capture;
+    private Context mContext;
+    private MicrophoneHelper microphoneHelper;
 
-  private Assistant watsonAssistant;
-  private SessionResponse watsonAssistantSession;
-  private SpeechToText speechService;
-  private TextToSpeech textToSpeech;
-
-  private void createServices() {
-    IamAuthenticator sttAuthenticator = new IamAuthenticator(mContext.getString(R.string.STT_apikey));
-    speechService = new SpeechToText(sttAuthenticator);
-    speechService.setServiceUrl((mContext.getString(R.string.STT_url)));
-
-    IamAuthenticator assistantAuthenticator = new IamAuthenticator(mContext.getString(R.string.assistant_apikey));
-    watsonAssistant = new Assistant("2019-02-28", assistantAuthenticator);
-    watsonAssistant.setServiceUrl(mContext.getString(R.string.assistant_url));
-
-    IamAuthenticator ttsAuthenticator = new IamAuthenticator(mContext.getString(R.string.TTS_apikey));
-    textToSpeech = new TextToSpeech(ttsAuthenticator);
-    textToSpeech.setServiceUrl(mContext.getString(R.string.TTS_url));
-  }
-
-  @Override
-  protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    setContentView(R.layout.activity_main);
-
-    mContext = getApplicationContext();
-
-    inputMessage = findViewById(R.id.message);
-    btnSend = findViewById(R.id.btn_send);
-    btnRecord = findViewById(R.id.btn_record);
-    String customFont = "Montserrat-Regular.ttf";
-    Typeface typeface = Typeface.createFromAsset(getAssets(), customFont);
-    inputMessage.setTypeface(typeface);
-    recyclerView = findViewById(R.id.recycler_view);
-
-    messageArrayList = new ArrayList<>();
-    mAdapter = new ChatAdapter(messageArrayList);
-    microphoneHelper = new MicrophoneHelper(this);
-
-    LinearLayoutManager layoutManager = new LinearLayoutManager(this);
-    layoutManager.setStackFromEnd(true);
-    recyclerView.setLayoutManager(layoutManager);
-    recyclerView.setItemAnimator(new DefaultItemAnimator());
-    recyclerView.setAdapter(mAdapter);
-    this.inputMessage.setText("");
-    this.initialRequest = true;
+    private Assistant watsonAssistant;
+    private SessionResponse watsonAssistantSession;
+    private SpeechToText speechService;
+    private TextToSpeech textToSpeech;
 
 
-    int permission = ContextCompat.checkSelfPermission(this,
-      Manifest.permission.RECORD_AUDIO);
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
 
-    if (permission != PackageManager.PERMISSION_GRANTED) {
-      Log.i(TAG, "Permission to record denied");
-      makeRequest();
-    } else {
-      Log.i(TAG, "Permission to record was already granted");
-    }
+        mContext = getApplicationContext();
+
+        inputMessage = findViewById(R.id.message);
+        btnSend = findViewById(R.id.btn_send);
+        btnRecord = findViewById(R.id.btn_record);
+        recyclerView = findViewById(R.id.recycler_view);
+
+        String customFont = "Montserrat-Regular.ttf";
+        Typeface typeface = Typeface.createFromAsset(getAssets(), customFont);
+        inputMessage.setTypeface(typeface);
+
+        messageArrayList = new ArrayList<>();
+        mAdapter = new ChatAdapter(messageArrayList);
+        microphoneHelper = new MicrophoneHelper(this);
+
+        LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+        layoutManager.setStackFromEnd(true);
+        recyclerView.setLayoutManager(layoutManager);
+        recyclerView.setItemAnimator(new DefaultItemAnimator());
+        recyclerView.setAdapter(mAdapter);
+        this.inputMessage.setText("");
+        this.initialRequest = true;
 
 
-    recyclerView.addOnItemTouchListener(new RecyclerTouchListener(getApplicationContext(), recyclerView, new ClickListener() {
-      @Override
-      public void onClick(View view, final int position) {
-        Message audioMessage = (Message) messageArrayList.get(position);
-        if (audioMessage != null && !audioMessage.getMessage().isEmpty()) {
-          new SayTask().execute(audioMessage.getMessage());
-        }
-      }
+        int permission = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.RECORD_AUDIO);
 
-      @Override
-      public void onLongClick(View view, int position) {
-        recordMessage();
-
-      }
-    }));
-
-    btnSend.setOnClickListener(new View.OnClickListener() {
-      @Override
-      public void onClick(View v) {
-        if (checkInternetConnection()) {
-          sendMessage();
-        }
-      }
-    });
-
-    btnRecord.setOnClickListener(new View.OnClickListener() {
-      @Override
-      public void onClick(View v) {
-        recordMessage();
-      }
-    });
-
-    createServices();
-    sendMessage();
-  }
-
-  ;
-
-  // Speech-to-Text Record Audio permission
-  @Override
-  public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-    switch (requestCode) {
-      case REQUEST_RECORD_AUDIO_PERMISSION:
-        permissionToRecordAccepted = grantResults[0] == PackageManager.PERMISSION_GRANTED;
-        break;
-      case RECORD_REQUEST_CODE: {
-
-        if (grantResults.length == 0
-          || grantResults[0] !=
-          PackageManager.PERMISSION_GRANTED) {
-
-          Log.i(TAG, "Permission has been denied by user");
+        if (permission != PackageManager.PERMISSION_GRANTED) {
+            Log.i(TAG, "Permission to record denied");
+            makeRequest();
         } else {
-          Log.i(TAG, "Permission has been granted by user");
+            Log.i(TAG, "Permission to record was already granted");
         }
-        return;
-      }
 
-      case MicrophoneHelper.REQUEST_PERMISSION: {
-        if (grantResults.length > 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-          Toast.makeText(this, "Permission to record audio denied", Toast.LENGTH_SHORT).show();
-        }
-      }
-    }
-    // if (!permissionToRecordAccepted ) finish();
 
-  }
-
-  protected void makeRequest() {
-    ActivityCompat.requestPermissions(this,
-      new String[]{Manifest.permission.RECORD_AUDIO},
-      MicrophoneHelper.REQUEST_PERMISSION);
-  }
-
-  // Sending a message to Watson Assistant Service
-  private void sendMessage() {
-
-    final String inputmessage = this.inputMessage.getText().toString().trim();
-    if (!this.initialRequest) {
-      Message inputMessage = new Message();
-      inputMessage.setMessage(inputmessage);
-      inputMessage.setId("1");
-      messageArrayList.add(inputMessage);
-    } else {
-      Message inputMessage = new Message();
-      inputMessage.setMessage(inputmessage);
-      inputMessage.setId("100");
-      this.initialRequest = false;
-      Toast.makeText(getApplicationContext(), "Tap on the message for Voice", Toast.LENGTH_LONG).show();
-
-    }
-
-    this.inputMessage.setText("");
-    mAdapter.notifyDataSetChanged();
-
-    Thread thread = new Thread(new Runnable() {
-      public void run() {
-        try {
-          if (watsonAssistantSession == null) {
-            ServiceCall<SessionResponse> call = watsonAssistant.createSession(new CreateSessionOptions.Builder().assistantId(mContext.getString(R.string.assistant_id)).build());
-            watsonAssistantSession = call.execute().getResult();
-          }
-
-          MessageInput input = new MessageInput.Builder()
-            .text(inputmessage)
-            .build();
-          MessageOptions options = new MessageOptions.Builder()
-            .assistantId(mContext.getString(R.string.assistant_id))
-            .input(input)
-            .sessionId(watsonAssistantSession.getSessionId())
-            .build();
-          MessageResponse response = watsonAssistant.message(options).execute().getResult();
-            Log.i(TAG, "run: "+response);
-          final Message outMessage = new Message();
-          if (response != null &&
-            response.getOutput() != null &&
-            !response.getOutput().getGeneric().isEmpty() &&
-            "text".equals(response.getOutput().getGeneric().get(0).responseType())) {
-            outMessage.setMessage(response.getOutput().getGeneric().get(0).text());
-            outMessage.setId("2");
-
-            messageArrayList.add(outMessage);
-
-            // speak the message
-            new SayTask().execute(outMessage.getMessage());
-
-            runOnUiThread(new Runnable() {
-              public void run() {
-                mAdapter.notifyDataSetChanged();
-                if (mAdapter.getItemCount() > 1) {
-                  recyclerView.getLayoutManager().smoothScrollToPosition(recyclerView, null, mAdapter.getItemCount() - 1);
-
+        recyclerView.addOnItemTouchListener(new RecyclerTouchListener(getApplicationContext(), recyclerView, new ClickListener() {
+            @Override
+            public void onClick(View view, final int position) {
+                Message audioMessage = (Message) messageArrayList.get(position);
+                if (audioMessage != null && !audioMessage.getMessage().isEmpty()) {
+                    new SayTask().execute(audioMessage.getMessage());
                 }
+            }
 
-              }
+            @Override
+            public void onLongClick(View view, int position) {
+                recordMessage();
+
+            }
+        }));
+
+        btnSend.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (checkInternetConnection()) {
+                    sendMessage();
+                }
+            }
+        });
+
+        btnRecord.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!listening) {
+                    // Update the icon background
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            btnRecord.setBackgroundColor(Color.GREEN);
+                        }
+                    });
+
+                    capture = microphoneHelper.getInputStream(true);
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                speechService.recognizeUsingWebSocket(getRecognizeOptions(capture),
+                                        new MicrophoneRecognizeDelegate());
+                            } catch (Exception e) {
+                                showError(e);
+                            }
+                        }
+                    }).start();
+
+                    listening = true;
+                } else {
+                    // Update the icon background
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            btnRecord.setBackgroundColor(Color.WHITE);
+                        }
+                    });
+                    microphoneHelper.closeInputStream();
+                    listening = false;
+                }
+            }
+        });
+
+        createServices();
+        sendMessage();
+    }
+
+    //Record a message via Watson Speech to Text
+    private void recordMessage() {
+        if (!listening) {          // Update the icon background
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    btnRecord.setBackgroundColor(Color.GREEN);
+                }
             });
-          }
-        } catch (Exception e) {
-          e.printStackTrace();
+            capture = microphoneHelper.getInputStream(false);
+            final RecognizeOptions recognizeOptions = new RecognizeOptions.Builder()
+                    .audio(capture)
+                    .model(RecognizeOptions.Model.EN_US_BROADBANDMODEL)
+                    .interimResults(true)
+                    .inactivityTimeout(2000)
+                    .build();
+            try {
+                speechService.recognizeUsingWebSocket(recognizeOptions, new MicrophoneRecognizeDelegate());
+            } catch (Exception e) {
+                showError(e);
+            }
+
+            listening = true;
+            //Toast.makeText(MainActivity.this, "Listening....Click to Stop", Toast.LENGTH_LONG).show();
+
+        } else {
+            try {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        btnRecord.setBackgroundColor(Color.WHITE);
+                    }
+                });
+                //Toast.makeText(MainActivity.this, "Stopped Listening....Click to Start", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                showError(e);
+            }
+            try {
+                capture.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+                showError(e);
+            }
+            listening = false;
         }
-      }
-    });
-
-    thread.start();
-
-  }
-
-  private class SayTask extends AsyncTask<String, Void, String> {
-    @Override
-    protected String doInBackground(String... params) {
-      SynthesizeOptions synthesizeOptions =
-              new SynthesizeOptions.Builder()
-                      .text(params[0])
-                      .accept("audio/wav")
-                      .voice(SynthesizeOptions.Voice.EN_US_MICHAELV3VOICE)
-                      .build();
-      streamPlayer.playStream(textToSpeech.synthesize(synthesizeOptions).execute().getResult());
-      return "Did synthesize";
     }
-  }
 
-  //Record a message via Watson Speech to Text
-  private void recordMessage() {
-    if (listening != true) {
-      capture = microphoneHelper.getInputStream(true);
-      new Thread(new Runnable() {
+    // Speech-to-Text Record Audio permission
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode) {
+            case REQUEST_RECORD_AUDIO_PERMISSION:
+                permissionToRecordAccepted = grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                break;
+            case RECORD_REQUEST_CODE: {
+
+                if (grantResults.length == 0
+                        || grantResults[0] !=
+                        PackageManager.PERMISSION_GRANTED) {
+
+                    Log.i(TAG, "Permission has been denied by user");
+                } else {
+                    Log.i(TAG, "Permission has been granted by user");
+                }
+                return;
+            }
+
+            case MicrophoneHelper.REQUEST_PERMISSION: {
+                if (grantResults.length > 0 && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "Permission to record audio denied", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }
+        // if (!permissionToRecordAccepted ) finish();
+
+    }
+
+    protected void makeRequest() {
+        ActivityCompat.requestPermissions(this,
+                new String[]{Manifest.permission.RECORD_AUDIO},
+                MicrophoneHelper.REQUEST_PERMISSION);
+    }
+
+    // Sending a message to Watson Assistant Service
+    private void sendMessage() {
+
+        final String inputmessage = this.inputMessage.getText().toString().trim();
+        if (!this.initialRequest) {
+            Message inputMessage = new Message();
+            inputMessage.setMessage(inputmessage);
+            inputMessage.setId("1");
+            messageArrayList.add(inputMessage);
+        } else {
+            Message inputMessage = new Message();
+            inputMessage.setMessage(inputmessage);
+            inputMessage.setId("100");
+            this.initialRequest = false;
+            Toast.makeText(getApplicationContext(), "Tap on the message for Voice", Toast.LENGTH_LONG).show();
+
+        }
+
+        this.inputMessage.setText("");
+        mAdapter.notifyDataSetChanged();
+
+        Thread thread = new Thread(new Runnable() {
+            public void run() {
+                try {
+                    if (watsonAssistantSession == null) {
+                        ServiceCall<SessionResponse> call = watsonAssistant.createSession(new CreateSessionOptions.Builder().assistantId(mContext.getString(R.string.assistant_id)).build());
+                        watsonAssistantSession = call.execute().getResult();
+                    }
+
+                    MessageInput input = new MessageInput.Builder()
+                            .text(inputmessage)
+                            .build();
+                    MessageOptions options = new MessageOptions.Builder()
+                            .assistantId(mContext.getString(R.string.assistant_id))
+                            .input(input)
+                            .sessionId(watsonAssistantSession.getSessionId())
+                            .build();
+                    MessageResponse response = watsonAssistant.message(options).execute().getResult();
+                    Log.i(TAG, "run: " + response);
+                    final Message outMessage = new Message();
+                    if (response != null &&
+                            response.getOutput() != null &&
+                            !response.getOutput().getGeneric().isEmpty() &&
+                            "text".equals(response.getOutput().getGeneric().get(0).responseType())) {
+                        outMessage.setMessage(response.getOutput().getGeneric().get(0).text());
+                        outMessage.setId("2");
+
+                        messageArrayList.add(outMessage);
+
+                        // speak the message
+                        new SayTask().execute(outMessage.getMessage());
+
+                        runOnUiThread(new Runnable() {
+                            public void run() {
+                                mAdapter.notifyDataSetChanged();
+                                if (mAdapter.getItemCount() > 1) {
+                                    recyclerView.getLayoutManager().smoothScrollToPosition(recyclerView, null, mAdapter.getItemCount() - 1);
+
+                                }
+
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        thread.start();
+
+    }
+
+    private class SayTask extends AsyncTask<String, Void, String> {
         @Override
-        public void run() {
-          try {
-            speechService.recognizeUsingWebSocket(getRecognizeOptions(capture), new MicrophoneRecognizeDelegate());
-          } catch (Exception e) {
-            showError(e);
-          }
+        protected String doInBackground(String... params) {
+            SynthesizeOptions synthesizeOptions =
+                    new SynthesizeOptions.Builder()
+                            .text(params[0])
+                            .accept("audio/wav")
+                            .voice(SynthesizeOptions.Voice.EN_US_MICHAELV3VOICE)
+                            .build();
+            streamPlayer.playStream(textToSpeech.synthesize(synthesizeOptions).execute().getResult());
+            return "Did synthesize";
         }
-      }).start();
-      listening = true;
-      Toast.makeText(MainActivity.this, "Listening....Click to Stop", Toast.LENGTH_LONG).show();
-
-    } else {
-      try {
-        microphoneHelper.closeInputStream();
-        listening = false;
-        Toast.makeText(MainActivity.this, "Stopped Listening....Click to Start", Toast.LENGTH_LONG).show();
-      } catch (Exception e) {
-        showError(e);
-      }
-
-    }
-  }
-
-  /**
-   * Check Internet Connection
-   *
-   * @return
-   */
-  private boolean checkInternetConnection() {
-    // get Connectivity Manager object to check connection
-    ConnectivityManager cm =
-      (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-
-    NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
-    boolean isConnected = activeNetwork != null &&
-      activeNetwork.isConnectedOrConnecting();
-
-    // Check for network connections
-    if (isConnected) {
-      return true;
-    } else {
-      Toast.makeText(this, " No Internet Connection available ", Toast.LENGTH_LONG).show();
-      return false;
     }
 
-  }
 
-  //Private Methods - Speech to Text
-  private RecognizeOptions getRecognizeOptions(InputStream audio) {
-    return new RecognizeOptions.Builder()
-      .audio(audio)
-      .contentType(ContentType.OPUS.toString())
-      .model("en-US_BroadbandModel")
-      .interimResults(true)
-      .inactivityTimeout(2000)
-      .build();
-  }
+    /**
+     * Check Internet Connection
+     *
+     * @return
+     */
+    private boolean checkInternetConnection() {
+        // get Connectivity Manager object to check connection
+        ConnectivityManager cm =
+                (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
 
-  //Watson Speech to Text Methods.
-  private class MicrophoneRecognizeDelegate extends BaseRecognizeCallback {
-    @Override
-    public void onTranscription(SpeechRecognitionResults speechResults) {
-      if (speechResults.getResults() != null && !speechResults.getResults().isEmpty()) {
-        String text = speechResults.getResults().get(0).getAlternatives().get(0).getTranscript();
-        showMicText(text);
-      }
-      showDebug(speechResults.toString());
-    }
+        NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+        boolean isConnected = activeNetwork != null &&
+                activeNetwork.isConnectedOrConnecting();
 
-    @Override
-    public void onConnected() {
-      showDebug("call to onConnected");
-    }
-
-    @Override
-    public void onError(Exception e) {
-      showError(e);
-      enableMicButton();
-    }
-
-    @Override
-    public void onDisconnected() {
-      showDebug("call to onDisconnected");
-    }
-
-    @Override
-    public void onInactivityTimeout(RuntimeException runtimeException) {
+        // Check for network connections
+        if (isConnected) {
+            return true;
+        } else {
+            Toast.makeText(this, " No Internet Connection available ", Toast.LENGTH_LONG).show();
+            return false;
+        }
 
     }
 
-    @Override
-    public void onListening() {
-      showDebug("call to onListening");
-      enableMicButton();
+    //Private Methods - Speech to Text
+    private RecognizeOptions getRecognizeOptions(InputStream audio) {
+        return new RecognizeOptions.Builder()
+                .audio(audio)
+                .model("en-US_BroadbandModel")
+                .interimResults(true)
+                .inactivityTimeout(2000)
+                .build();
     }
 
-    @Override
-    public void onTranscriptionComplete() {
-      showDebug("call to onTranscriptionComplete");
+    //Watson Speech to Text Methods.
+    private class MicrophoneRecognizeDelegate extends BaseRecognizeCallback {
+        @Override
+        public void onTranscription(SpeechRecognitionResults speechResults) {
+            if (speechResults.getResults() != null && !speechResults.getResults().isEmpty()) {
+                String text = speechResults.getResults().get(0).getAlternatives().get(0).getTranscript();
+                showMicText(text);
+            }
+            showDebug(speechResults.toString());
+        }
+
+        @Override
+        public void onConnected() {
+            showDebug("call to onConnected");
+        }
+
+        @Override
+        public void onError(Exception e) {
+            try {
+                capture.close();
+            } catch (IOException e1) {
+                e1.printStackTrace();
+            }
+            showError(e);
+            enableMicButton();
+        }
+
+        @Override
+        public void onDisconnected() {
+            showDebug("call to onDisconnected");
+        }
+
+        @Override
+        public void onInactivityTimeout(RuntimeException runtimeException) {
+
+        }
+
+        @Override
+        public void onListening() {
+            showDebug("call to onListening");
+            enableMicButton();
+        }
+
+        @Override
+        public void onTranscriptionComplete() {
+            showDebug("call to onTranscriptionComplete");
+        }
+
     }
 
-  }
+    private void showMicText(final String text) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                inputMessage.setText(text);
+            }
+        });
+    }
 
-  private void showMicText(final String text) {
-    runOnUiThread(new Runnable() {
-      @Override
-      public void run() {
-        inputMessage.setText(text);
-      }
-    });
-  }
+    private void enableMicButton() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                btnRecord.setEnabled(true);
+            }
+        });
+    }
 
-  private void enableMicButton() {
-    runOnUiThread(new Runnable() {
-      @Override
-      public void run() {
-        btnRecord.setEnabled(true);
-      }
-    });
-  }
+    private void showError(final Exception e) {
+        Log.e(TAG,e.getMessage(),e);
+    }
 
-  private void showError(final Exception e) {
-    runOnUiThread(new Runnable() {
-      @Override
-      public void run() {
-        Toast.makeText(MainActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
-        e.printStackTrace();
-      }
-    });
-  }
-  private void showDebug(final String message) {
-    runOnUiThread(new Runnable() {
-      @Override
-      public void run() {
-        Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
-      }
-    });
-  }
+    private void showDebug(final String message) {
+                Log.i(TAG,message);
+    }
+
+    private void createServices() {
+        IamAuthenticator waoptions = new IamAuthenticator(getString(R.string.assistant_apikey));
+        watsonAssistant = new Assistant("2019-02-28", waoptions);
+        watsonAssistant.setServiceUrl(getString(R.string.assistant_url));
+        IamAuthenticator ttsoptions = new IamAuthenticator(getString(R.string.TTS_apikey));
+        textToSpeech = new TextToSpeech(ttsoptions);
+        textToSpeech.setServiceUrl(getString(R.string.TTS_url));
+
+        IamAuthenticator sttoptions = new IamAuthenticator(getString(R.string.STT_apikey));
+        speechService = new SpeechToText(sttoptions);
+        speechService.setServiceUrl(getString(R.string.STT_url));
+    }
 
 }
 
