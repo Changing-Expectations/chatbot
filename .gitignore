@@ -86,5 +86,5 @@ local.properties
 .idea/libraries/support_annotations_24_1_1.xml
 .idea/libraries/support_v4_24_1_1.xml
 .idea/libraries/support_vector_drawable_24_1_1.xml
-
-app/src/main/res/values-w820dp/config.xml
+**.DS_Store**
+app/src/main/res/values/config.xml
