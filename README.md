@@ -24,6 +24,9 @@ macOS 10.15
 ### Enable Gradle Build
 You may see an error when running the program for the first time <insert the error and how to fix it>
   
+### Error no NDK
+download from the link
+  
 ### Enable Microphone
 When running the emulator the host microphone (the mic on your laptop) must be enabled from inside the emulator.  To do this follow these steps:
 
